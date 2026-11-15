@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NASA SPHEREx Sky Time-Series & Differential Analyzer</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- ======================= SIDEBAR ======================= -->
+  <aside class="sidebar" id="sidebar">
+    <header class="sidebar-header">
+      <div class="brand-wrap">
+        <div class="logo-circle">SX</div>
+        <h3 class="sidebar-title">SPHEREx Lab</h3>
+      </div>
+      <button class="sidebar-toggle" id="sidebarToggle" title="Collapse/Expand Sidebar">&lt;</button>
+    </header>
+
+    <div class="sidebar-content">
+      <!-- Navigation Menu -->
+      <ul class="menu-list">
+        <li class="menu-item">
+          <a href="#" class="menu-link active" id="navCarousel" onclick="switchView('carousel'); return false;">
+            <span class="menu-icon">&#127756;</span>
+            <span class="menu-label">Target Carousel (5 Objects)</span>
+          </a>
+        </li>
+        <li class="menu-item">
+          <a href="#" class="menu-link" id="navAnalyzer" onclick="switchView('analyzer'); return false;">
+            <span class="menu-icon">&#128301;</span>
+            <span class="menu-label">Sky Analyzer &amp; Blink</span>
+          </a>
+        </li>
+      </ul>
+
+      <hr class="sidebar-divider">
+
+      <!-- Coordinate & FOV Control Panel -->
+      <form id="coordForm" class="control-panel" onsubmit="applyCoordinates(event)">
+        <h4 class="panel-heading">Sky Coordinates (ICRS)</h4>
+
+        <label class="field-label">Quick Target Preset</label>
+        <select id="targetSelect" class="field-input" onchange="selectPresetTarget(this.value)">
+          <option value="0">1. Barnard's Star (Fast Proper Motion)</option>
+          <option value="1">2. WISE 0855-0714 (Cold Brown Dwarf)</option>
+          <option value="2">3. Epsilon Indi B (Binary Brown Dwarf)</option>
+          <option value="3">4. RW Aurigae (Variable T Tauri Star)</option>
+          <option value="4">5. R Draconis (Mira Variable Star)</option>
+          <option value="5">6. M101 Galaxy (Python IRSA Cutouts)</option>
+        </select>
+
+        <label class="field-label">Right Ascension (RA: deg or HMS)</label>
+        <input type="text" id="raInput" class="field-input" value="269.45208" placeholder="e.g. 269.45208 or 08h 55m 10.831s" required>
+
+        <label class="field-label">Declination (Dec: deg or DMS)</label>
+        <input type="text" id="decInput" class="field-input" value="4.69339" placeholder="e.g. 4.69339 or -07d 14m 42.53s" required>
+
+        <label class="field-label">Field of View (FOV): <span id="fovVal">0.10</span>&deg;</label>
+        <input type="range" id="fovInput" class="field-range" min="0.02" max="0.50" step="0.01" value="0.10" oninput="onFovSliderInput(this.value)">
+
+        <label class="field-label">Infrared Bandpass (102 Channels)</label>
+        <select id="bandSelect" class="field-input" onchange="updateBandpass()">
+          <option value="SPHEREx-D1">Band D1 (0.75 – 1.11 &mu;m)</option>
+          <option value="SPHEREx-D2" selected>Band D2 (1.11 – 1.64 &mu;m)</option>
+          <option value="SPHEREx-D3">Band D3 (1.64 – 2.42 &mu;m)</option>
+          <option value="SPHEREx-D4">Band D4 (2.42 – 3.82 &mu;m)</option>
+          <option value="SPHEREx-D5">Band D5 (3.82 – 4.42 &mu;m)</option>
+          <option value="SPHEREx-D6">Band D6 (4.42 – 5.00 &mu;m)</option>
+        </select>
+
+        <button type="submit" class="action-btn primary-btn">Point Telescope &amp; Load</button>
+      </form>
+
+      <hr class="sidebar-divider">
+
+      <!-- Upload Local Cutouts from Python Script (Saved permanently in Browser IndexedDB) -->
+      <div class="control-panel">
+        <h4 class="panel-heading">Load Python FITS/PNG Cutouts</h4>
+        <p class="helper-text" id="savedFilesStatus">Select PNG cutouts from your Python script (saved automatically across reloads):</p>
+        <input type="file" id="pngFileInput" class="file-input" multiple accept="image/png,image/jpeg" onchange="loadUserCutouts(this.files)">
+        <div class="source-toggle-row" id="sourceToggleRow" style="display:none;">
+          <button type="button" class="mini-btn active" id="useUploadedBtn" onclick="setCutoutSource('uploaded')">Uploaded PNGs</button>
+          <button type="button" class="mini-btn" id="useLiveSimBtn" onclick="setCutoutSource('live')">Live Coords</button>
+          <button type="button" class="mini-btn danger-btn" onclick="clearSavedCutouts()" title="Clear saved cutouts">&times;</button>
+        </div>
+      </div>
+
+      <!-- Share & Embed URL -->
+      <div class="control-panel">
+        <button type="button" class="action-btn secondary-btn" onclick="copyShareUrl()">&#128279; Copy Share / Embed URL</button>
+        <p id="copyStatus" class="copy-status"></p>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ======================= MAIN WORKSPACE ======================= -->
+  <main class="main-content" id="mainContent">
+
+    <!-- VIEW 1: 3D TARGET CAROUSEL -->
+    <section id="carouselView" class="view-section active">
+      <h1 class="about-title">SPHEREx Targets</h1>
+      <p class="subtitle-banner">Click any card to launch time-series blink &amp; differential image analysis</p>
+
+      <div class="show-card-container">
+        <button class="nav-arrow left" id="prevCardBtn" aria-label="Previous target">&lt;</button>
+
+        <div class="show-card-track" id="cardTrack">
+          <!-- Card 0: Barnard's Star -->
+          <div class="card active" data-index="0" onclick="handleCardClick(0)">
+            <canvas class="card-preview-canvas" id="previewCanvas0" width="280" height="240"></canvas>
+            <div class="card-info">
+              <span class="card-badge">Fastest Proper Motion</span>
+              <h3>Barnard's Star</h3>
+              <p>RA: 269.452&deg; | Dec: +4.693&deg;</p>
+              <small>Moves 10.3 arcsec/yr across epochs</small>
+            </div>
+          </div>
+
+          <!-- Card 1: WISE 0855 -->
+          <div class="card right-1" data-index="1" onclick="handleCardClick(1)">
+            <canvas class="card-preview-canvas" id="previewCanvas1" width="280" height="240"></canvas>
+            <div class="card-info">
+              <span class="card-badge">Y-Type Brown Dwarf</span>
+              <h3>WISE 0855-0714</h3>
+              <p>08h 55m 10.83s | -07d 14m 42.5s</p>
+              <small>Coldest brown dwarf (250 K), bright in 4.5 &mu;m</small>
+            </div>
+          </div>
+
+          <!-- Card 2: Epsilon Indi B -->
+          <div class="card right-2" data-index="2" onclick="handleCardClick(2)">
+            <canvas class="card-preview-canvas" id="previewCanvas2" width="280" height="240"></canvas>
+            <div class="card-info">
+              <span class="card-badge">Binary T1 + T6 Dwarf</span>
+              <h3>Epsilon Indi B</h3>
+              <p>RA: 331.068&deg; | Dec: -56.782&deg;</p>
+              <small>High parallax &amp; methane absorption</small>
+            </div>
+          </div>
+
+          <!-- Card 3: RW Aurigae -->
+          <div class="card left-2" data-index="3" onclick="handleCardClick(3)">
+            <canvas class="card-preview-canvas" id="previewCanvas3" width="280" height="240"></canvas>
+            <div class="card-info">
+              <span class="card-badge">Variable T Tauri Star</span>
+              <h3>RW Aurigae</h3>
+              <p>RA: 76.957&deg; | Dec: +30.401&deg;</p>
+              <small>Disk occultation &amp; IR flux variability</small>
+            </div>
+          </div>
+
+          <!-- Card 4: R Draconis -->
+          <div class="card left-1" data-index="4" onclick="handleCardClick(4)">
+            <canvas class="card-preview-canvas" id="previewCanvas4" width="280" height="240"></canvas>
+            <div class="card-info">
+              <span class="card-badge">Mira Variable Giant</span>
+              <h3>R Draconis</h3>
+              <p>RA: 248.179&deg; | Dec: +66.754&deg;</p>
+              <small>245-day pulsation period in IR bands</small>
+            </div>
+          </div>
+        </div>
+
+        <button class="nav-arrow right" id="nextCardBtn" aria-label="Next target">&gt;</button>
+      </div>
+
+      <div class="dots" id="carouselDots">
+        <div class="dot active" data-index="0" onclick="updateCarousel(0)"></div>
+        <div class="dot" data-index="1" onclick="updateCarousel(1)"></div>
+        <div class="dot" data-index="2" onclick="updateCarousel(2)"></div>
+        <div class="dot" data-index="3" onclick="updateCarousel(3)"></div>
+        <div class="dot" data-index="4" onclick="updateCarousel(4)"></div>
+      </div>
+
+      <div class="carousel-cta">
+        <button class="action-btn primary-btn large-btn" onclick="openSelectedTargetInAnalyzer()">
+          Open Selected Target in SPHEREx Analyzer &rarr;
+        </button>
+      </div>
+    </section>
+
+    <!-- VIEW 2: SCIENTIFIC SKY ANALYZER -->
+    <section id="analyzerView" class="view-section">
+      <header class="analyzer-header">
+        <div>
+          <h2 id="activeTargetTitle">Barnard's Star — SPHEREx Time-Series Analyzer</h2>
+          <p id="activeTargetMeta" class="meta-line">RA: 269.45208&deg; | Dec: +4.69339&deg; | FOV: 0.10&deg; | Band: SPHEREx-D2</p>
+        </div>
+        <div class="mode-buttons">
+          <button class="mode-btn active" id="modeBlinkBtn" onclick="setProcessingMode('blink')">&#9654; Time-Series Blink</button>
+          <button class="mode-btn" id="modeSubBtn" onclick="setProcessingMode('subtract')">&minus; Subtract (B &minus; A)</button>
+          <button class="mode-btn" id="modeAddBtn" onclick="setProcessingMode('add')">&#43; Stack Sum (&Sigma; Frames)</button>
+        </div>
+      </header>
+
+      <div class="analyzer-grid">
+        <!-- Left Panel: Live Interactive Sky Map (Works 100% locally via CDS HiPS2FITS + Interactive Pan/Zoom) -->
+        <div class="viewer-card">
+          <div class="viewer-card-header">
+            <span>Live Infrared Sky Map (AllWISE / 2MASS / DSS2)</span>
+            <select id="surveySelect" class="mini-select" onchange="changeSkySurvey(this.value)">
+              <option value="CDS/P/allWISE/color" selected>AllWISE Infrared (3.4 - 22 &mu;m)</option>
+              <option value="CDS/P/2MASS/color">2MASS Near-IR (J, H, K)</option>
+              <option value="CDS/P/DSS2/color">DSS2 Optical Sky</option>
+            </select>
+          </div>
+
+          <div class="sky-map-box" id="skyMapContainer">
+            <img id="liveSkyImg" class="live-sky-img" alt="Live Sky Survey Cutout" crossorigin="anonymous">
+            <canvas id="skyOverlayCanvas" class="sky-overlay-canvas" width="460" height="460"></canvas>
+            <div id="skyLoadingBadge" class="sky-loading-badge">Loading NASA/CDS Sky Map...</div>
+          </div>
+
+          <div class="viewer-footer">
+            <span>Drag image to move around the sky, scroll wheel to zoom FOV, or enter RA/Dec on the left.</span>
+          </div>
+        </div>
+
+        <!-- Right Panel: SPHEREx Multi-Epoch Cutout & Differential Math Engine -->
+        <div class="viewer-card">
+          <div class="viewer-card-header">
+            <span id="cutoutPanelTitle">SPHEREx Multi-Epoch Cutouts (WCS Aligned)</span>
+            <span id="frameBadge" class="badge-pill">Epoch 1 / 6</span>
+          </div>
+
+          <div class="canvas-wrapper">
+            <canvas id="spherexCanvas" width="460" height="460"></canvas>
+          </div>
+
+          <!-- Playback & Epoch Controls -->
+          <div class="playback-controls">
+            <button class="ctrl-btn" id="playPauseBtn" onclick="togglePlay()">&#10074;&#10074; Pause</button>
+            <input type="range" id="epochSlider" class="epoch-slider" min="0" max="5" step="1" value="0" oninput="onEpochSliderChange(this.value)">
+            <label class="speed-label">Speed:
+              <select id="speedSelect" class="mini-select" onchange="changeBlinkSpeed(this.value)">
+                <option value="900">Slow</option>
+                <option value="500" selected>Normal</option>
+                <option value="220">Fast</option>
+              </select>
+            </label>
+          </div>
+
+          <div id="mathExplanation" class="math-readout">
+            <strong>Mode: Time-Series Blink.</strong> Animating sequential SPHEREx epochs to reveal proper motion and flux variability.
+          </div>
+        </div>
+      </div>
+
+      <!-- Embed Code Box -->
+      <div class="embed-bar">
+        <span><strong>Embed Link / Iframe:</strong></span>
+        <input type="text" id="embedCodeInput" class="embed-input" readonly>
+        <button class="ctrl-btn" onclick="copyShareUrl()">Copy Link</button>
+      </div>
+    </section>
+
+  </main>
+
+  <script src="custom.js" defer></script>
+</body>
+</html>
